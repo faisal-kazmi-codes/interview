@@ -1,55 +1,28 @@
-from flask import Flask, request, jsonify
-from flask_migrate import Migrate
-from models import User , db
-from flask_bcrypt import Bcrypt
-from flask_jwt_extended import JWTManager, create_access_token
-from config import Config
-from schemas import UserSchema
-from marshmallow import ValidationError
+from fastapi import FastAPI, Depends, WebSocket
+from auth import register_user, login_user, get_db
+from schemas import UserRegister, UserLogin
+from sqlalchemy.orm import Session
+from fastapi.websockets import WebSocketDisconnect
 
-app = Flask(__name__)
-app.config.from_object(Config)
-db.init_app(app)
-bcrypt = Bcrypt(app)
-jwt = JWTManager(app)
-migrate=Migrate(app,db)
+app = FastAPI()
+
+@app.post("/register")
+def register(user: UserRegister, db: Session = Depends(get_db)):
+    new_user = register_user(user, db)
+    return {"message": "User created successfully", "user_id": new_user.id}
+
+@app.post("/login")
+def login(user: UserLogin, db: Session = Depends(get_db)):
+    token = login_user(user, db)
+    return {"access_token": token, "token_type": "bearer"}
 
 
-@app.route("/register", methods=['POST'])
-def create_user():
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
     try:
-        data = UserSchema.user_register().load(request.json)
-    except ValidationError as err:
-        return jsonify({"errors": err.messages}), 400
-
-    email_id = data['email']
-    if User.query.filter_by(email=email_id).first():
-        return jsonify({'error': 'User with this email already exists'}), 400
-
-    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-    new_user = User(
-        email=email_id,
-        first_name=data.get('first_name'),
-        last_name=data.get('last_name'),
-        phone_number=data.get('phone_number'),
-        password=hashed_password
-    )
-    db.session.add(new_user)
-    db.session.commit()
-
-    return jsonify({'message': 'User created successfully'}), 201
-
-
-@app.route('/login', methods=['POST'])
-def login():
-    try:
-        data = UserSchema.user_login().load(request.json)
-    except ValidationError as err:
-        return jsonify({"errors": err.messages}), 400
-
-    user = User.query.filter_by(email=data.get['email']).first()
-    if user and bcrypt.check_password_hash(user.password, data['password']):
-        access_token = create_access_token(identity=user.id)
-        return jsonify({'access_token': access_token})
-    else:
-        return jsonify({'message': 'Invalid email or password'}), 401
+        while True:
+            data = await websocket.receive_text()
+            await websocket.send_text(f"Message received: {data}")
+    except WebSocketDisconnect:
+        print("Client disconnected")

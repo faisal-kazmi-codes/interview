@@ -1,16 +1,13 @@
-from marshmallow import Schema, fields, validate, ValidationError
+from pydantic import BaseModel, EmailStr, constr
+from typing import Optional
 
-class UserSchema:
-    user_register = Schema.from_dict({
-    "email": fields.Email(required=True),
-    "first_name": fields.Str(required=True, validate=validate.Length(min=1)),
-    "last_name": fields.Str(required=True, validate=validate.Length(min=1)),
-    "phone_number": fields.Str(required=False),
-    "password": fields.Str(required=True, validate=validate.Length(min=6)),
-    })
+class UserRegister(BaseModel):
+    email: EmailStr
+    first_name: str
+    last_name: str
+    phone_number: Optional[str]
+    password: constr(min_length=6)
 
-    user_login = Schema.from_dict({
-    "email_id" : fields.Email(required=True),
-    "password" : fields.Str(required=True),
-    
-   })
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
