@@ -4,17 +4,11 @@ from schemas import UserRegister, UserLogin
 from sqlalchemy.orm import Session
 from fastapi.websockets import WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-
+import json
 
 app = FastAPI()
 
-origins = [
-    "http://localhost.tiangolo.com",
-    "https://localhost.tiangolo.com",
-    "http://localhost",
-    "http://localhost:8080",
-    "http://116.202.210.102:8000",
-]
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,10 +18,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.post("/register")
 def register(user: UserRegister, db: Session = Depends(get_db)):
     new_user = register_user(user, db)
     return {"message": "User created successfully", "user_id": new_user.id}
+
 
 @app.post("/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
@@ -38,9 +34,29 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    response = []
     try:
         while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Message received: {data}")
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                print("Client initiated disconnect")
+                break
+
+            if message["type"] == "websocket.receive":
+                if "text" in message:
+                    raw_text = message["text"]
+                    try:
+                        data = json.loads(raw_text)
+                        text_value = data.get("text", "")
+                        response.append(text_value)
+                        await websocket.send_text(f"Message received: {text_value}")
+                    except json.JSONDecodeError:
+                        await websocket.send_text("Invalid JSON format.")
+                else:
+                    await websocket.send_text("Binary messages are not supported.")
+
     except WebSocketDisconnect:
         print("Client disconnected")
+
+    print("All received text messages:")
+    print(response)
